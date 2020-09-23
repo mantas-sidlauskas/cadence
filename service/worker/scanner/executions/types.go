@@ -37,6 +37,8 @@ const (
 	ConcreteExecutionType ScanType = iota
 	// CurrentExecutionType current execution entity
 	CurrentExecutionType
+	// TimerType
+	TimerType
 )
 
 // ScanType is the enum for representing different entity types to scan
@@ -68,6 +70,8 @@ func (st ScanType) ToIterator() func(retryer persistence.Retryer, pageSize int) 
 		return fetcher.ConcreteExecutionIterator
 	case CurrentExecutionType:
 		return fetcher.CurrentExecutionIterator
+	case TimerType:
+		return fetcher.TimersIterator
 	default:
 		panic("unknown scan type")
 	}

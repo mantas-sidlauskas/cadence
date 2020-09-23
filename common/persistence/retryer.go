@@ -38,6 +38,7 @@ type Retryer interface {
 	DeleteWorkflowExecution(*DeleteWorkflowExecutionRequest) error
 	DeleteCurrentWorkflowExecution(request *DeleteCurrentWorkflowExecutionRequest) error
 	GetShardID() int
+	GetTimerIndexTasks(request *GetTimerIndexTasksRequest) (*GetTimerIndexTasksResponse, error)
 }
 
 type (
@@ -89,6 +90,22 @@ func (pr *persistenceRetryer) GetWorkflowExecution(
 		resp, err = pr.execManager.GetWorkflowExecution(req)
 		return err
 	}
+	err := backoff.Retry(op, pr.policy, common.IsPersistenceTransientError)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (pr *persistenceRetryer) GetTimerIndexTasks(req *GetTimerIndexTasksRequest) (*GetTimerIndexTasksResponse, error) {
+	var resp *GetTimerIndexTasksResponse
+
+	op := func() error {
+		var err error
+		resp, err = pr.execManager.GetTimerIndexTasks(req)
+		return err
+	}
+
 	err := backoff.Retry(op, pr.policy, common.IsPersistenceTransientError)
 	if err != nil {
 		return nil, err
