@@ -61,14 +61,14 @@ require (
 	go.opencensus.io v0.22.2 // indirect
 	go.uber.org/atomic v1.5.1
 	go.uber.org/cadence v0.11.3-0.20200408211929-2e8992a5ef2d
-	go.uber.org/multierr v1.3.0
+	go.uber.org/multierr v1.4.0
 	go.uber.org/net/metrics v1.2.0 // indirect
 	go.uber.org/thriftrw v1.20.2
 	go.uber.org/yarpc v1.42.0
 	go.uber.org/zap v1.12.0
 	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
-	golang.org/x/tools v0.0.0-20200917221617-d56e4e40bc9d
+	golang.org/x/tools v0.0.0-20201002184944-ecd9fd270d5d
 	gonum.org/v1/gonum v0.7.0
 	google.golang.org/api v0.14.0
 	google.golang.org/appengine v1.6.1 // indirect
@@ -76,7 +76,7 @@ require (
 	gopkg.in/jcmturner/goidentity.v3 v3.0.0 // indirect
 	gopkg.in/jcmturner/gokrb5.v7 v7.3.0 // indirect
 	gopkg.in/validator.v2 v2.0.0-20180514200540-135c24b11c19
-	gopkg.in/yaml.v2 v2.2.2
+	gopkg.in/yaml.v2 v2.2.5
 )
 
 // TODO https://github.com/uber/cadence/issues/2863

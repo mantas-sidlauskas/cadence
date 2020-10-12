@@ -20,4 +20,55 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package executions
+package shardscanner
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/suite"
+
+	"github.com/uber/cadence/common"
+)
+
+type fixerWorkflowSuite struct {
+	suite.Suite
+}
+
+func TestFixerWorkflowSuite(t *testing.T) {
+	suite.Run(t, new(fixerWorkflowSuite))
+}
+
+func (s *fixerWorkflowSuite) TestResolveFixerConfig() {
+	result := resolveFixerConfig(FixerWorkflowConfigOverwrites{
+		Concurrency: common.IntPtr(1000),
+	})
+	s.Equal(ResolvedFixerWorkflowConfig{
+		Concurrency:             1000,
+		BlobstoreFlushThreshold: 1000,
+		ActivityBatchSize:       200,
+	}, result)
+}
+
+func (s *fixerWorkflowSuite) TestGetCorruptedKeysBatches() {
+	var keys []CorruptedKeysEntry
+	for i := 5; i < 50; i += 2 {
+		keys = append(keys, CorruptedKeysEntry{
+			ShardID: i,
+		})
+	}
+	batches := getCorruptedKeysBatches(5, 3, keys, 1)
+	s.Equal([][]CorruptedKeysEntry{
+		{
+			{ShardID: 7},
+			{ShardID: 13},
+			{ShardID: 19},
+			{ShardID: 25},
+			{ShardID: 31},
+		},
+		{
+			{ShardID: 37},
+			{ShardID: 43},
+			{ShardID: 49},
+		},
+	}, batches)
+}

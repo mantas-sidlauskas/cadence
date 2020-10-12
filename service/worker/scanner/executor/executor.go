@@ -79,7 +79,7 @@ const (
 // NewFixedSizePoolExecutor returns an implementation of task executor that maintains
 // a fixed size pool of goroutines.The returned executor also allows task processing to
 // to be deferred for fairness. To defer processing of a task, simply return TaskStatsDefer
-// from your task.Run method. When a task is deferred, it will be added to the tail of a
+// from your task.Start method. When a task is deferred, it will be added to the tail of a
 // deferredTaskQ which in turn will be processed after the current runQ is drained
 func NewFixedSizePoolExecutor(size int, maxDeferred int, metrics metrics.Client, scope int) Executor {
 	stopC := make(chan struct{})

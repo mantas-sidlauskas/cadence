@@ -20,4 +20,17 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package executions
+package shardscanner
+
+import (
+	"go.uber.org/cadence/activity"
+)
+
+func init() {
+	// shardscanner activities
+	activity.RegisterWithOptions(ScannerEmitMetricsActivity, activity.RegisterOptions{Name: ActivityScannerEmitMetrics})
+	activity.RegisterWithOptions(ScanShardActivity, activity.RegisterOptions{Name: ActivityScanShard})
+	activity.RegisterWithOptions(ScannerConfigActivity, activity.RegisterOptions{Name: ActivityScannerConfig})
+	activity.RegisterWithOptions(FixerCorruptedKeysActivity, activity.RegisterOptions{Name: ActivityFixerCorruptedKeys})
+	activity.RegisterWithOptions(FixShardActivity, activity.RegisterOptions{Name: ActivityFixShard})
+}

@@ -52,10 +52,6 @@ type (
 		CurrentRunID string
 		Execution
 	}
-
-	Timer struct {
-		Execution
-	}
 )
 
 // ValidateExecution returns an error if Execution is not valid, nil otherwise.
@@ -106,11 +102,6 @@ func (curre *CurrentExecution) Validate() error {
 	if len(curre.CurrentRunID) == 0 {
 		return errors.New("empty CurrentRunID")
 	}
-	return nil
-}
-
-func (t *Timer) Validate() error {
-	// @TODO (mantas) implement
 	return nil
 }
 

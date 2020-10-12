@@ -26,6 +26,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/uber/cadence/service/worker/scanner/executions"
+	"github.com/uber/cadence/service/worker/scanner/shardscanner"
+
 	"github.com/uber/cadence/.gen/go/shared"
 	"github.com/uber/cadence/common"
 	"github.com/uber/cadence/common/definition"
@@ -43,7 +46,6 @@ import (
 	"github.com/uber/cadence/service/worker/parentclosepolicy"
 	"github.com/uber/cadence/service/worker/replicator"
 	"github.com/uber/cadence/service/worker/scanner"
-	"github.com/uber/cadence/service/worker/scanner/executions"
 )
 
 type (
@@ -122,27 +124,9 @@ func NewConfig(params *service.BootstrapParams) *Config {
 			ClusterMetadata:        params.ClusterMetadata,
 			TaskListScannerEnabled: dc.GetBoolProperty(dynamicconfig.TaskListScannerEnabled, true),
 			HistoryScannerEnabled:  dc.GetBoolProperty(dynamicconfig.HistoryScannerEnabled, true),
-			ConcreteExecutionScannerConfig: &executions.ScannerWorkflowDynamicConfig{
-				Enabled:                 dc.GetBoolProperty(dynamicconfig.ConcreteExecutionsScannerEnabled, false),
-				Concurrency:             dc.GetIntProperty(dynamicconfig.ConcreteExecutionsScannerConcurrency, 25),
-				ExecutionsPageSize:      dc.GetIntProperty(dynamicconfig.ConcreteExecutionsScannerPersistencePageSize, 1000),
-				BlobstoreFlushThreshold: dc.GetIntProperty(dynamicconfig.ConcreteExecutionsScannerBlobstoreFlushThreshold, 100),
-				ActivityBatchSize:       dc.GetIntProperty(dynamicconfig.ConcreteExecutionsScannerActivityBatchSize, 25),
-				DynamicConfigInvariantCollections: executions.DynamicConfigInvariantCollections{
-					InvariantCollectionMutableState: dc.GetBoolProperty(dynamicconfig.ConcreteExecutionsScannerInvariantCollectionMutableState, true),
-					InvariantCollectionHistory:      dc.GetBoolProperty(dynamicconfig.ConcreteExecutionsScannerInvariantCollectionHistory, true),
-				},
-			},
-			CurrentExecutionScannerConfig: &executions.ScannerWorkflowDynamicConfig{
-				Enabled:                 dc.GetBoolProperty(dynamicconfig.CurrentExecutionsScannerEnabled, false),
-				Concurrency:             dc.GetIntProperty(dynamicconfig.CurrentExecutionsScannerConcurrency, 25),
-				ExecutionsPageSize:      dc.GetIntProperty(dynamicconfig.CurrentExecutionsScannerPersistencePageSize, 1000),
-				BlobstoreFlushThreshold: dc.GetIntProperty(dynamicconfig.CurrentExecutionsScannerBlobstoreFlushThreshold, 100),
-				ActivityBatchSize:       dc.GetIntProperty(dynamicconfig.CurrentExecutionsScannerActivityBatchSize, 25),
-				DynamicConfigInvariantCollections: executions.DynamicConfigInvariantCollections{
-					InvariantCollectionMutableState: dc.GetBoolProperty(dynamicconfig.CurrentExecutionsScannerInvariantCollectionMutableState, true),
-					InvariantCollectionHistory:      dc.GetBoolProperty(dynamicconfig.CurrentExecutionsScannerInvariantCollectionHistory, false),
-				},
+			ShardScanners: []*shardscanner.ScannerConfig{
+				executions.ConcreteConfig(dc),
+				executions.CurrentConfig(dc),
 			},
 		},
 		BatcherCfg: &batcher.Config{

@@ -67,8 +67,8 @@ type (
 type (
 	// ScanOutputEntity represents a single execution that should be durably recorded by Scan.
 	ScanOutputEntity struct {
-		Execution interface{}
-		Result    invariant.ManagerCheckResult
+		Entity interface{}
+		Result invariant.ManagerCheckResult
 	}
 
 	// FixOutputEntity represents a single execution that should be durably recorded by fix.

@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package shard
+package shardscanner
 
 import (
 	"fmt"
@@ -33,8 +33,18 @@ import (
 	"github.com/uber/cadence/common/reconciliation/store"
 )
 
+// Scanner is used to scan over given iterator. It is responsible for three things:
+// 1. Checking invariants for each entity.
+// 2. Recording corruption and failures to durable store.
+// 3. Producing a ScanReport
+type Scanner interface {
+	Scan() ScanReport
+}
+
 type (
-	scanner struct {
+	// ShardScanner is a generic scanner which iterates over entities provided by iterator
+	// implementations of this scanner have to provided invariant manager and iterator
+	ShardScanner struct {
 		shardID          int
 		itr              pagination.Iterator
 		failedWriter     store.ExecutionWriter
@@ -44,7 +54,7 @@ type (
 	}
 )
 
-// NewScanner constructs a new scanner
+// NewScanner constructs a new ShardScanner
 func NewScanner(
 	shardID int,
 	iterator pagination.Iterator,
@@ -52,10 +62,10 @@ func NewScanner(
 	blobstoreFlushThreshold int,
 	manager invariant.Manager,
 	progressReportFn func(),
-) Scanner {
+) *ShardScanner {
 	id := uuid.New()
 
-	return &scanner{
+	return &ShardScanner{
 		shardID:          shardID,
 		itr:              iterator,
 		failedWriter:     store.NewBlobstoreWriter(id, store.FailedExtension, blobstoreClient, blobstoreFlushThreshold),
@@ -66,17 +76,16 @@ func NewScanner(
 }
 
 // Scan scans over all executions in shard and runs invariant checks per execution.
-func (s *scanner) Scan() ScanReport {
+func (s *ShardScanner) Scan() ScanReport {
 	result := ScanReport{
 		ShardID: s.shardID,
 		Stats: ScanStats{
 			CorruptionByType: make(map[invariant.Name]int64),
 		},
 	}
-
 	for s.itr.HasNext() {
 		s.progressReportFn()
-		exec, err := s.itr.Next()
+		entity, err := s.itr.Next()
 		if err != nil {
 			result.Result.ControlFlowFailure = &ControlFlowFailure{
 				Info:        "persistence iterator returned error",
@@ -84,15 +93,15 @@ func (s *scanner) Scan() ScanReport {
 			}
 			return result
 		}
-		checkResult := s.invariantManager.RunChecks(exec)
-		result.Stats.ExecutionsCount++
+		checkResult := s.invariantManager.RunChecks(entity)
+		result.Stats.EntitiesCount++
 		switch checkResult.CheckResultType {
 		case invariant.CheckResultTypeHealthy:
 			// do nothing if execution is healthy
 		case invariant.CheckResultTypeCorrupted:
 			if err := s.corruptedWriter.Add(store.ScanOutputEntity{
-				Execution: exec,
-				Result:    checkResult,
+				Entity: entity,
+				Result: checkResult,
 			}); err != nil {
 				result.Result.ControlFlowFailure = &ControlFlowFailure{
 					Info:        "blobstore add failed for corrupted execution check",
@@ -102,13 +111,10 @@ func (s *scanner) Scan() ScanReport {
 			}
 			result.Stats.CorruptedCount++
 			result.Stats.CorruptionByType[*checkResult.DeterminingInvariantType]++
-			if invariant.ExecutionOpen(exec) {
-				result.Stats.CorruptedOpenExecutionCount++
-			}
 		case invariant.CheckResultTypeFailed:
 			if err := s.failedWriter.Add(store.ScanOutputEntity{
-				Execution: exec,
-				Result:    checkResult,
+				Entity: entity,
+				Result: checkResult,
 			}); err != nil {
 				result.Result.ControlFlowFailure = &ControlFlowFailure{
 					Info:        "blobstore add failed for failed execution check",

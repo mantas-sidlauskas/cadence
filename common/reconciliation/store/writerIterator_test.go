@@ -81,7 +81,7 @@ func (s *WriterIteratorSuite) TestWriterIterator() {
 		exec, err := pItr.Next()
 		s.NoError(err)
 		soe := &ScanOutputEntity{
-			Execution: exec,
+			Entity: exec,
 		}
 		outputs = append(outputs, soe)
 		s.NoError(blobstoreWriter.Add(soe))

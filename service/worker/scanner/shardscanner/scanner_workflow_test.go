@@ -20,23 +20,22 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package executions
+package shardscanner
 
-import "github.com/uber/cadence/common"
+import (
+	"testing"
 
-func (s *workflowsSuite) TestResolveFixerConfig() {
-	result := resolveFixerConfig(FixerWorkflowConfigOverwrites{
-		Concurrency: common.IntPtr(1000),
-	})
-	s.Equal(ResolvedFixerWorkflowConfig{
-		Concurrency:             1000,
-		BlobstoreFlushThreshold: 1000,
-		ActivityBatchSize:       200,
-		InvariantCollections: InvariantCollections{
-			InvariantCollectionMutableState: true,
-			InvariantCollectionHistory:      true,
-		},
-	}, result)
+	"github.com/stretchr/testify/suite"
+	"go.uber.org/cadence/testsuite"
+)
+
+type workflowsSuite struct {
+	suite.Suite
+	testsuite.WorkflowTestSuite
+}
+
+func TestScannerWorkflowSuite(t *testing.T) {
+	suite.Run(t, new(workflowsSuite))
 }
 
 func (s *workflowsSuite) TestGetBatchIndices() {
@@ -96,7 +95,7 @@ func (s *workflowsSuite) TestGetBatchIndices() {
 	}
 }
 
-func (s *workflowsSuite) TestGetShardBatches() {
+func (s *aggregatorsSuite) TestGetShardBatches() {
 	var shards []int
 	for i := 5; i < 50; i += 2 {
 		shards = append(shards, i)
@@ -108,26 +107,101 @@ func (s *workflowsSuite) TestGetShardBatches() {
 	}, batches)
 }
 
-func (s *workflowsSuite) TestGetCorruptedKeysBatches() {
-	var keys []CorruptedKeysEntry
-	for i := 5; i < 50; i += 2 {
-		keys = append(keys, CorruptedKeysEntry{
-			ShardID: i,
-		})
+func (s *workflowsSuite) TestFlattenShards() {
+	testCases := []struct {
+		input        Shards
+		expectedList []int
+		expectedMin  int
+		expectedMax  int
+		msg          string
+	}{
+		{
+			input: Shards{
+				List: []int{1, 2, 3},
+			},
+			expectedList: []int{1, 2, 3},
+			expectedMin:  1,
+			expectedMax:  3,
+			msg:          "Shard list provided",
+		},
+		{
+			input: Shards{
+				Range: &ShardRange{
+					Min: 5,
+					Max: 10,
+				},
+			},
+			expectedList: []int{5, 6, 7, 8, 9},
+			expectedMin:  5,
+			expectedMax:  9,
+			msg:          "Shard range provided",
+		},
+		{
+			input: Shards{
+				List: []int{1, 90, 2, 3},
+			},
+			expectedList: []int{1, 90, 2, 3},
+			expectedMin:  1,
+			expectedMax:  90,
+			msg:          "Unordered shard list provided",
+		},
 	}
-	batches := getCorruptedKeysBatches(5, 3, keys, 1)
-	s.Equal([][]CorruptedKeysEntry{
+	for _, tc := range testCases {
+		shardList, min, max := tc.input.Flatten()
+		s.Equal(tc.expectedList, shardList)
+		s.Equal(tc.expectedMin, min)
+		s.Equal(tc.expectedMax, max)
+	}
+}
+
+func (s *workflowsSuite) TestValidateShards() {
+	testCases := []struct {
+		shards    Shards
+		expectErr bool
+	}{
 		{
-			{ShardID: 7},
-			{ShardID: 13},
-			{ShardID: 19},
-			{ShardID: 25},
-			{ShardID: 31},
+			shards:    Shards{},
+			expectErr: true,
 		},
 		{
-			{ShardID: 37},
-			{ShardID: 43},
-			{ShardID: 49},
+			shards: Shards{
+				List:  []int{},
+				Range: &ShardRange{},
+			},
+			expectErr: true,
 		},
-	}, batches)
+		{
+			shards: Shards{
+				List: []int{},
+			},
+			expectErr: true,
+		},
+		{
+			shards: Shards{
+				Range: &ShardRange{
+					Min: 0,
+					Max: 0,
+				},
+			},
+			expectErr: true,
+		},
+		{
+			shards: Shards{
+				Range: &ShardRange{
+					Min: 0,
+					Max: 1,
+				},
+			},
+			expectErr: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		err := tc.shards.Validate()
+		if tc.expectErr {
+			s.Error(err)
+		} else {
+			s.NoError(err)
+		}
+	}
 }

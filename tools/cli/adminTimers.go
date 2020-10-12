@@ -28,10 +28,10 @@ import (
 	"io"
 	"os"
 
-	"github.com/uber/cadence/common/reconciliation/fetcher"
-
 	"github.com/urfave/cli"
 
+	"github.com/uber/cadence/common"
+	"github.com/uber/cadence/common/backoff"
 	"github.com/uber/cadence/common/log/loggerimpl"
 	"github.com/uber/cadence/common/persistence"
 	"github.com/uber/cadence/common/persistence/cassandra"
@@ -241,12 +241,37 @@ func (cl *cassandraLoader) Load() []*persistence.TimerTaskInfo {
 		logger,
 	)
 
-	itr := fetcher.TimersIterator()
-	for itr.HasNext() {
+	var timers []*persistence.TimerTaskInfo
 
-		timer, err := itr.Next()
+	var token []byte
+	isFirstIteration := true
+	for isFirstIteration || len(token) != 0 {
+		isFirstIteration = false
+		req := persistence.GetTimerIndexTasksRequest{
+			MinTimestamp:  st,
+			MaxTimestamp:  et,
+			BatchSize:     batchSize,
+			NextPageToken: token,
+		}
+
+		resp := &persistence.GetTimerIndexTasksResponse{}
+
+		op := func() error {
+			var err error
+			resp, err = ratelimitedClient.GetTimerIndexTasks(&req)
+			return err
+		}
+
+		err = backoff.Retry(op, common.CreatePersistenceRetryPolicy(), common.IsPersistenceTransientError)
+
+		if err != nil {
+			ErrorAndExit("cannot get timer tasks for shard", err)
+		}
+
+		token = resp.NextPageToken
+		timers = append(timers, resp.Timers...)
 	}
-
+	return timers
 }
 
 func (fl *fileLoader) Load() []*persistence.TimerTaskInfo {

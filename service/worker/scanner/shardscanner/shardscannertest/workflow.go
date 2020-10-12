@@ -20,4 +20,31 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package executions
+package shardscannertest
+
+import (
+	"go.uber.org/cadence/workflow"
+
+	"github.com/uber/cadence/service/worker/scanner/shardscanner"
+)
+
+// NewTestWorkflow is a helper, no-op workflow used for testing purposes.
+func NewTestWorkflow(ctx workflow.Context, name string, params shardscanner.ScannerWorkflowParams) error {
+	wf, err := shardscanner.NewScannerWorkflow(ctx, name, params)
+	if err != nil {
+		return err
+	}
+
+	return wf.Start(ctx)
+}
+
+// NewTestFixerWorkflow is a helper, no-op workflow used for testing purposes.
+func NewTestFixerWorkflow(ctx workflow.Context, params shardscanner.FixerWorkflowParams) error {
+	wf, err := shardscanner.NewFixerWorkflow(ctx, "test-fixer", params)
+	if err != nil {
+		return err
+	}
+
+	return wf.Start(ctx)
+
+}

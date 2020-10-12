@@ -25,6 +25,10 @@ package executions
 //go:generate enumer -type=ScanType
 
 import (
+	"strconv"
+
+	"github.com/uber/cadence/service/worker/scanner/shardscanner"
+
 	"github.com/uber/cadence/common/pagination"
 	"github.com/uber/cadence/common/persistence"
 	"github.com/uber/cadence/common/reconciliation/entity"
@@ -37,8 +41,6 @@ const (
 	ConcreteExecutionType ScanType = iota
 	// CurrentExecutionType current execution entity
 	CurrentExecutionType
-	// TimerType
-	TimerType
 )
 
 // ScanType is the enum for representing different entity types to scan
@@ -70,8 +72,6 @@ func (st ScanType) ToIterator() func(retryer persistence.Retryer, pageSize int) 
 		return fetcher.ConcreteExecutionIterator
 	case CurrentExecutionType:
 		return fetcher.CurrentExecutionIterator
-	case TimerType:
-		return fetcher.TimersIterator
 	default:
 		panic("unknown scan type")
 	}
@@ -114,4 +114,21 @@ func (st ScanType) ToInvariants(collections []invariant.Collection) []InvariantF
 	default:
 		panic("unknown scan type")
 	}
+}
+
+// ParseCollections converts string based map to list of collections
+func ParseCollections(params shardscanner.CustomScannerConfig) []invariant.Collection {
+	var collections []invariant.Collection
+
+	for k, v := range params {
+		c, e := invariant.CollectionString(k)
+		if e != nil {
+			continue
+		}
+		enabled, err := strconv.ParseBool(v)
+		if enabled && err == nil {
+			collections = append(collections, c)
+		}
+	}
+	return collections
 }

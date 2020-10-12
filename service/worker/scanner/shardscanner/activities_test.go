@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package executions
+package shardscanner
 
 import (
 	"context"
@@ -36,10 +36,16 @@ import (
 
 	"github.com/uber/cadence/common"
 	"github.com/uber/cadence/common/metrics"
+	"github.com/uber/cadence/common/pagination"
+	"github.com/uber/cadence/common/persistence"
+	"github.com/uber/cadence/common/reconciliation/entity"
+	"github.com/uber/cadence/common/reconciliation/invariant"
 	"github.com/uber/cadence/common/reconciliation/store"
 	"github.com/uber/cadence/common/resource"
 	"github.com/uber/cadence/common/service/dynamicconfig"
 )
+
+var TestContextKey ScannerContextKey = "test-context"
 
 type activitiesSuite struct {
 	suite.Suite
@@ -56,79 +62,158 @@ func TestActivitiesSuite(t *testing.T) {
 func (s *activitiesSuite) SetupSuite() {
 	activity.Register(ScannerConfigActivity)
 	activity.Register(FixerCorruptedKeysActivity)
+	activity.Register(ScanShardActivity)
+	activity.Register(FixShardActivity)
 }
 
 func (s *activitiesSuite) SetupTest() {
 	s.controller = gomock.NewController(s.T())
 	s.mockResource = resource.NewTest(s.controller, metrics.Worker)
+	defer s.controller.Finish()
+}
+
+func (s *activitiesSuite) TestScanShardActivity() {
+
+	testCases := []struct {
+		params      ScanShardActivityParams
+		wantErr     bool
+		managerHook func(pr persistence.Retryer, params ScanShardActivityParams, config ScannerConfig) invariant.Manager
+		itHook      func(pr persistence.Retryer, params ScanShardActivityParams, config ScannerConfig) pagination.Iterator
+	}{
+		{
+			params: ScanShardActivityParams{
+				Shards:     []int{0},
+				ContextKey: TestContextKey,
+			},
+			managerHook: func(pr persistence.Retryer, params ScanShardActivityParams, config ScannerConfig) invariant.Manager {
+				manager := invariant.NewMockManager(s.controller)
+				manager.EXPECT().RunChecks(gomock.Any()).
+					AnyTimes().
+					Return(
+						invariant.ManagerCheckResult{CheckResultType: invariant.CheckResultTypeHealthy},
+					)
+				return manager
+			},
+			itHook: func(pr persistence.Retryer, params ScanShardActivityParams, config ScannerConfig) pagination.Iterator {
+				it := pagination.NewMockIterator(s.controller)
+				calls := 0
+				it.EXPECT().HasNext().DoAndReturn(
+					func() bool {
+						if calls > 1 {
+							return false
+						}
+						calls++
+						return true
+					},
+				).AnyTimes()
+				it.EXPECT().Next().Return(&entity.ConcreteExecution{}, nil).Times(2)
+				return it
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tc := range testCases {
+
+		env := s.NewTestActivityEnvironment()
+		env.SetWorkerOptions(worker.Options{
+			BackgroundActivityContext: context.WithValue(context.Background(), TestContextKey, Context{
+				ContextKey: TestContextKey,
+				Config:     &ScannerConfig{},
+				Scope:      metrics.NoopScope(metrics.Worker),
+				Resource:   s.mockResource,
+				Hooks:      NewScannerHooks(tc.managerHook, tc.itHook),
+			}),
+		})
+		report, err := env.ExecuteActivity(ScanShardActivity, tc.params)
+		if tc.wantErr {
+			s.Error(err)
+		} else {
+			s.NoError(err)
+		}
+		var reports []ScanReport
+		s.NoError(report.Get(&reports))
+	}
 }
 
 func (s *activitiesSuite) TestScannerConfigActivity() {
 	testCases := []struct {
-		scannerWorkflowDynamicConfig *ScannerWorkflowDynamicConfig
-		params                       ScannerConfigActivityParams
-		resolved                     ResolvedScannerWorkflowConfig
+		dynamicParams *DynamicParams
+		params        ScannerConfigActivityParams
+		resolved      ResolvedScannerWorkflowConfig
+		addHook       bool
 	}{
 		{
-			scannerWorkflowDynamicConfig: &ScannerWorkflowDynamicConfig{
+			dynamicParams: &DynamicParams{
 				Enabled:                 dynamicconfig.GetBoolPropertyFn(true),
 				Concurrency:             dynamicconfig.GetIntPropertyFn(10),
-				ExecutionsPageSize:      dynamicconfig.GetIntPropertyFn(100),
+				PageSize:                dynamicconfig.GetIntPropertyFn(100),
 				ActivityBatchSize:       dynamicconfig.GetIntPropertyFn(10),
 				BlobstoreFlushThreshold: dynamicconfig.GetIntPropertyFn(1000),
-				DynamicConfigInvariantCollections: DynamicConfigInvariantCollections{
-					InvariantCollectionMutableState: dynamicconfig.GetBoolPropertyFn(true),
-					InvariantCollectionHistory:      dynamicconfig.GetBoolPropertyFn(false),
-				},
 			},
 			params: ScannerConfigActivityParams{
 				Overwrites: ScannerWorkflowConfigOverwrites{},
-				ScanType:   ConcreteExecutionType,
+				ContextKey: TestContextKey,
+			},
+			addHook: true,
+			resolved: ResolvedScannerWorkflowConfig{
+				Enabled:                 true,
+				Concurrency:             10,
+				ActivityBatchSize:       10,
+				PageSize:                100,
+				BlobstoreFlushThreshold: 1000,
+				CustomScannerConfig: CustomScannerConfig{
+					"test-key": "test-value",
+				},
+			},
+		},
+		{
+			dynamicParams: &DynamicParams{
+				Enabled:                 dynamicconfig.GetBoolPropertyFn(true),
+				Concurrency:             dynamicconfig.GetIntPropertyFn(10),
+				PageSize:                dynamicconfig.GetIntPropertyFn(100),
+				ActivityBatchSize:       dynamicconfig.GetIntPropertyFn(10),
+				BlobstoreFlushThreshold: dynamicconfig.GetIntPropertyFn(1000),
+			},
+			params: ScannerConfigActivityParams{
+				Overwrites: ScannerWorkflowConfigOverwrites{},
+				ContextKey: TestContextKey,
 			},
 			resolved: ResolvedScannerWorkflowConfig{
 				Enabled:                 true,
 				Concurrency:             10,
 				ActivityBatchSize:       10,
-				ExecutionsPageSize:      100,
+				PageSize:                100,
 				BlobstoreFlushThreshold: 1000,
-				InvariantCollections: InvariantCollections{
-					InvariantCollectionHistory:      false,
-					InvariantCollectionMutableState: true,
-				},
 			},
 		},
 		{
-			scannerWorkflowDynamicConfig: &ScannerWorkflowDynamicConfig{
+			dynamicParams: &DynamicParams{
 				Enabled:                 dynamicconfig.GetBoolPropertyFn(true),
 				Concurrency:             dynamicconfig.GetIntPropertyFn(10),
 				ActivityBatchSize:       dynamicconfig.GetIntPropertyFn(100),
-				ExecutionsPageSize:      dynamicconfig.GetIntPropertyFn(100),
+				PageSize:                dynamicconfig.GetIntPropertyFn(100),
 				BlobstoreFlushThreshold: dynamicconfig.GetIntPropertyFn(1000),
-				DynamicConfigInvariantCollections: DynamicConfigInvariantCollections{
-					InvariantCollectionMutableState: dynamicconfig.GetBoolPropertyFn(true),
-					InvariantCollectionHistory:      dynamicconfig.GetBoolPropertyFn(false),
-				},
 			},
 			params: ScannerConfigActivityParams{
 				Overwrites: ScannerWorkflowConfigOverwrites{
-					Enabled:           common.BoolPtr(false),
-					ActivityBatchSize: common.IntPtr(1),
-					InvariantCollections: &InvariantCollections{
-						InvariantCollectionMutableState: false,
-						InvariantCollectionHistory:      true,
+					Enabled:                 common.BoolPtr(false),
+					ActivityBatchSize:       common.IntPtr(1),
+					BlobstoreFlushThreshold: common.IntPtr(100),
+					CustomScannerConfig: &CustomScannerConfig{
+						"test": "test",
 					},
 				},
-				ScanType: ConcreteExecutionType,
+				ContextKey: TestContextKey,
 			},
 			resolved: ResolvedScannerWorkflowConfig{
 				Enabled:                 false,
 				Concurrency:             10,
 				ActivityBatchSize:       1,
-				ExecutionsPageSize:      100,
-				BlobstoreFlushThreshold: 1000,
-				InvariantCollections: InvariantCollections{
-					InvariantCollectionHistory:      true,
-					InvariantCollectionMutableState: false,
+				PageSize:                100,
+				BlobstoreFlushThreshold: 100,
+				CustomScannerConfig: CustomScannerConfig{
+					"test": "test",
 				},
 			},
 		},
@@ -136,9 +221,21 @@ func (s *activitiesSuite) TestScannerConfigActivity() {
 
 	for _, tc := range testCases {
 		env := s.NewTestActivityEnvironment()
+
+		configHook := NewScannerHooks(nil, nil)
+		if tc.addHook {
+			configHook.Config = func(scanner Context) CustomScannerConfig {
+				return map[string]string{"test-key": "test-value"}
+			}
+		}
+
 		env.SetWorkerOptions(worker.Options{
-			BackgroundActivityContext: context.WithValue(context.Background(), ScanTypeScannerContextKeyMap[ConcreteExecutionType], ScannerContext{
-				ScannerWorkflowDynamicConfig: tc.scannerWorkflowDynamicConfig,
+			BackgroundActivityContext: context.WithValue(context.Background(), TestContextKey, Context{
+				ContextKey: TestContextKey,
+				Config: &ScannerConfig{
+					DynamicParams: *tc.dynamicParams,
+				},
+				Hooks: configHook,
 			}),
 		})
 		resolvedValue, err := env.ExecuteActivity(ScannerConfigActivity, tc.params)
@@ -157,15 +254,9 @@ func (s *activitiesSuite) TestFixerCorruptedKeysActivity() {
 	}, nil)
 	queryResult := &ShardCorruptKeysQueryResult{
 		Result: map[int]store.Keys{
-			1: {
-				UUID: "first",
-			},
-			2: {
-				UUID: "second",
-			},
-			3: {
-				UUID: "third",
-			},
+			1: {UUID: "first"},
+			2: {UUID: "second"},
+			3: {UUID: "third"},
 		},
 		ShardQueryPaginationToken: ShardQueryPaginationToken{
 			NextShardID: common.IntPtr(4),
@@ -179,11 +270,12 @@ func (s *activitiesSuite) TestFixerCorruptedKeysActivity() {
 	}, nil)
 	env := s.NewTestActivityEnvironment()
 	env.SetWorkerOptions(worker.Options{
-		BackgroundActivityContext: context.WithValue(context.Background(), ScanTypeFixerContextKeyMap[ConcreteExecutionType], FixerContext{
-			Resource: s.mockResource,
+		BackgroundActivityContext: context.WithValue(context.Background(), TestContextKey, FixerContext{
+			Resource:   s.mockResource,
+			ContextKey: TestContextKey,
 		}),
 	})
-	fixerResultValue, err := env.ExecuteActivity(FixerCorruptedKeysActivity, FixerCorruptedKeysActivityParams{})
+	fixerResultValue, err := env.ExecuteActivity(FixerCorruptedKeysActivity, FixerCorruptedKeysActivityParams{ContextKey: TestContextKey})
 	s.NoError(err)
 	fixerResult := &FixerCorruptedKeysActivityResult{}
 	s.NoError(fixerResultValue.Get(&fixerResult))

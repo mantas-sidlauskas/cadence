@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package shard
+package shardscanner
 
 import (
 	"fmt"
@@ -32,8 +32,19 @@ import (
 	"github.com/uber/cadence/common/reconciliation/store"
 )
 
+// Fixer is used to fix entities in a shard. It is responsible for three things:
+// 1. Confirming that each entity it scans is corrupted.
+// 2. Attempting to fix any confirmed corrupted executions.
+// 3. Recording skipped entities, failed to fix entities and successfully fix entities to durable store.
+// 4. Producing a FixReport
+type Fixer interface {
+	Fix() FixReport
+}
+
 type (
-	fixer struct {
+	// ShardFixer is a generic fixer which iterates over entities provided by iterator
+	// implementations of this fixer have to provided invariant manager and iterator.
+	ShardFixer struct {
 		shardID          int
 		itr              store.ScanOutputIterator
 		skippedWriter    store.ExecutionWriter
@@ -44,7 +55,7 @@ type (
 	}
 )
 
-// NewFixer constructs a new fixer
+// NewFixer constructs a new shard fixer.
 func NewFixer(
 	shardID int,
 	manager invariant.Manager,
@@ -52,10 +63,10 @@ func NewFixer(
 	blobstoreClient blobstore.Client,
 	blobstoreFlushThreshold int,
 	progressReportFn func(),
-) Fixer {
+) *ShardFixer {
 	id := uuid.New()
 
-	return &fixer{
+	return &ShardFixer{
 		shardID:          shardID,
 		itr:              iterator,
 		skippedWriter:    store.NewBlobstoreWriter(id, store.SkippedExtension, blobstoreClient, blobstoreFlushThreshold),
@@ -67,7 +78,7 @@ func NewFixer(
 }
 
 // Fix scans over all executions in shard and runs invariant fixes per execution.
-func (f *fixer) Fix() FixReport {
+func (f *ShardFixer) Fix() FixReport {
 	result := FixReport{
 		ShardID: f.shardID,
 	}
@@ -81,10 +92,10 @@ func (f *fixer) Fix() FixReport {
 			}
 			return result
 		}
-		fixResult := f.invariantManager.RunFixes(soe.Execution)
-		result.Stats.ExecutionCount++
+		fixResult := f.invariantManager.RunFixes(soe.Entity)
+		result.Stats.EntitiesCount++
 		foe := store.FixOutputEntity{
-			Execution: soe.Execution,
+			Execution: soe.Entity,
 			Input:     *soe,
 			Result:    fixResult,
 		}

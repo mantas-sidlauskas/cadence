@@ -94,8 +94,8 @@ func AdminDBScan(c *cli.Context) {
 	for _, e := range data {
 		execution, result := checkExecution(c, numberOfShards, e, invariants, ef)
 		out := store.ScanOutputEntity{
-			Execution: execution,
-			Result:    result,
+			Entity: execution,
+			Result: result,
 		}
 		data, err := json.Marshal(out)
 		if err != nil {

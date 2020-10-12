@@ -81,7 +81,7 @@ func AdminDBClean(c *cli.Context) {
 
 	for {
 		soe := &store.ScanOutputEntity{
-			Execution: blob.Clone(),
+			Entity: blob.Clone(),
 		}
 
 		if err := dec.Decode(&soe); err != nil {
@@ -95,7 +95,7 @@ func AdminDBClean(c *cli.Context) {
 
 	for _, e := range data {
 		out := store.FixOutputEntity{
-			Execution: e.Execution,
+			Execution: e.Entity,
 			Input:     *e,
 			Result:    fixExecution(c, invariants, e),
 		}
@@ -119,7 +119,7 @@ func fixExecution(
 	logger := loggerimpl.NewNopLogger()
 
 	execStore, err := cassandra.NewWorkflowExecutionPersistence(
-		execution.Execution.(entity.Entity).GetShardID(),
+		execution.Entity.(entity.Entity).GetShardID(),
 		session,
 		logger,
 	)
@@ -146,5 +146,5 @@ func fixExecution(
 		ivs = append(ivs, fn(pr))
 	}
 
-	return invariant.NewInvariantManager(ivs).RunFixes(execution.Execution)
+	return invariant.NewInvariantManager(ivs).RunFixes(execution.Entity)
 }

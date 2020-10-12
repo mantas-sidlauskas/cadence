@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package shard
+package shardscanner
 
 import (
 	"errors"
@@ -61,7 +61,7 @@ func (s *ScannerSuite) TestScan_Failure_FirstIteratorError() {
 	mockItr := pagination.NewMockIterator(s.controller)
 	mockItr.EXPECT().HasNext().Return(true).Times(1)
 	mockItr.EXPECT().Next().Return(nil, errors.New("iterator error")).Times(1)
-	scanner := &scanner{
+	scanner := &ShardScanner{
 		shardID:          0,
 		itr:              mockItr,
 		progressReportFn: func() {},
@@ -100,7 +100,7 @@ func (s *ScannerSuite) TestScan_Failure_NonFirstError() {
 	mockInvariantManager.EXPECT().RunChecks(gomock.Any()).Return(invariant.ManagerCheckResult{
 		CheckResultType: invariant.CheckResultTypeHealthy,
 	}).Times(4)
-	scanner := &scanner{
+	scanner := &ShardScanner{
 		shardID:          0,
 		itr:              mockItr,
 		invariantManager: mockInvariantManager,
@@ -110,7 +110,7 @@ func (s *ScannerSuite) TestScan_Failure_NonFirstError() {
 	s.Equal(ScanReport{
 		ShardID: 0,
 		Stats: ScanStats{
-			ExecutionsCount:  4,
+			EntitiesCount:    4,
 			CorruptionByType: make(map[invariant.Name]int64),
 		},
 		Result: ScanResult{
@@ -132,7 +132,7 @@ func (s *ScannerSuite) TestScan_Failure_CorruptedWriterError() {
 	}).Times(1)
 	corruptedWriter := store.NewMockExecutionWriter(s.controller)
 	corruptedWriter.EXPECT().Add(gomock.Any()).Return(errors.New("corrupted writer add failed")).Times(1)
-	scanner := &scanner{
+	scanner := &ShardScanner{
 		shardID:          0,
 		itr:              mockItr,
 		invariantManager: mockInvariantManager,
@@ -143,7 +143,7 @@ func (s *ScannerSuite) TestScan_Failure_CorruptedWriterError() {
 	s.Equal(ScanReport{
 		ShardID: 0,
 		Stats: ScanStats{
-			ExecutionsCount:  1,
+			EntitiesCount:    1,
 			CorruptionByType: make(map[invariant.Name]int64),
 		},
 		Result: ScanResult{
@@ -165,7 +165,7 @@ func (s *ScannerSuite) TestScan_Failure_FailedWriterError() {
 	}).Times(1)
 	failedWriter := store.NewMockExecutionWriter(s.controller)
 	failedWriter.EXPECT().Add(gomock.Any()).Return(errors.New("failed writer add failed")).Times(1)
-	scanner := &scanner{
+	scanner := &ShardScanner{
 		shardID:          0,
 		itr:              mockItr,
 		invariantManager: mockInvariantManager,
@@ -176,7 +176,7 @@ func (s *ScannerSuite) TestScan_Failure_FailedWriterError() {
 	s.Equal(ScanReport{
 		ShardID: 0,
 		Stats: ScanStats{
-			ExecutionsCount:  1,
+			EntitiesCount:    1,
 			CorruptionByType: make(map[invariant.Name]int64),
 		},
 		Result: ScanResult{
@@ -193,7 +193,7 @@ func (s *ScannerSuite) TestScan_Failure_FailedWriterFlushError() {
 	mockItr.EXPECT().HasNext().Return(false).Times(1)
 	failedWriter := store.NewMockExecutionWriter(s.controller)
 	failedWriter.EXPECT().Flush().Return(errors.New("failed writer flush failed")).Times(1)
-	scanner := &scanner{
+	scanner := &ShardScanner{
 		shardID:          0,
 		itr:              mockItr,
 		failedWriter:     failedWriter,
@@ -203,7 +203,7 @@ func (s *ScannerSuite) TestScan_Failure_FailedWriterFlushError() {
 	s.Equal(ScanReport{
 		ShardID: 0,
 		Stats: ScanStats{
-			ExecutionsCount:  0,
+			EntitiesCount:    0,
 			CorruptionByType: make(map[invariant.Name]int64),
 		},
 		Result: ScanResult{
@@ -222,7 +222,7 @@ func (s *ScannerSuite) TestScan_Failure_CorruptedWriterFlushError() {
 	corruptedWriter.EXPECT().Flush().Return(errors.New("corrupted writer flush failed")).Times(1)
 	failedWriter := store.NewMockExecutionWriter(s.controller)
 	failedWriter.EXPECT().Flush().Return(nil).Times(1)
-	scanner := &scanner{
+	scanner := &ShardScanner{
 		shardID:          0,
 		itr:              mockItr,
 		corruptedWriter:  corruptedWriter,
@@ -233,7 +233,7 @@ func (s *ScannerSuite) TestScan_Failure_CorruptedWriterFlushError() {
 	s.Equal(ScanReport{
 		ShardID: 0,
 		Stats: ScanStats{
-			ExecutionsCount:  0,
+			EntitiesCount:    0,
 			CorruptionByType: make(map[invariant.Name]int64),
 		},
 		Result: ScanResult{
@@ -346,7 +346,7 @@ func (s *ScannerSuite) TestScan_Success() {
 
 	mockCorruptedWriter := store.NewMockExecutionWriter(s.controller)
 	mockCorruptedWriter.EXPECT().Add(store.ScanOutputEntity{
-		Execution: &entity.ConcreteExecution{
+		Entity: &entity.ConcreteExecution{
 			Execution: entity.Execution{
 				DomainID: "history_missing",
 				State:    persistence.WorkflowStateCompleted,
@@ -364,7 +364,7 @@ func (s *ScannerSuite) TestScan_Success() {
 		},
 	}).Times(3)
 	mockCorruptedWriter.EXPECT().Add(store.ScanOutputEntity{
-		Execution: &entity.ConcreteExecution{
+		Entity: &entity.ConcreteExecution{
 			Execution: entity.Execution{
 				DomainID: "orphan_execution",
 				State:    persistence.WorkflowStateCreated,
@@ -387,7 +387,7 @@ func (s *ScannerSuite) TestScan_Success() {
 	}).Times(1)
 	mockFailedWriter := store.NewMockExecutionWriter(s.controller)
 	mockFailedWriter.EXPECT().Add(store.ScanOutputEntity{
-		Execution: &entity.ConcreteExecution{
+		Entity: &entity.ConcreteExecution{
 			Execution: entity.Execution{
 				DomainID: "failed",
 			}},
@@ -408,7 +408,7 @@ func (s *ScannerSuite) TestScan_Success() {
 	mockCorruptedWriter.EXPECT().FlushedKeys().Return(&store.Keys{UUID: "corrupt_keys_uuid"})
 	mockFailedWriter.EXPECT().FlushedKeys().Return(&store.Keys{UUID: "failed_keys_uuid"})
 
-	scanner := &scanner{
+	scanner := &ShardScanner{
 		shardID:          0,
 		invariantManager: mockInvariantManager,
 		corruptedWriter:  mockCorruptedWriter,
@@ -420,14 +420,13 @@ func (s *ScannerSuite) TestScan_Success() {
 	s.Equal(ScanReport{
 		ShardID: 0,
 		Stats: ScanStats{
-			ExecutionsCount:  10,
+			EntitiesCount:    10,
 			CorruptedCount:   4,
 			CheckFailedCount: 2,
 			CorruptionByType: map[invariant.Name]int64{
 				invariant.HistoryExists:        3,
 				invariant.OpenCurrentExecution: 1,
 			},
-			CorruptedOpenExecutionCount: 1,
 		},
 		Result: ScanResult{
 			ShardScanKeys: &ScanKeys{
