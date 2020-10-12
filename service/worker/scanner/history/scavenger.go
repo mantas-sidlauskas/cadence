@@ -84,8 +84,8 @@ const (
 )
 
 // NewScavenger returns an instance of history scavenger daemon
-// The Scavenger can be started by calling the Start() method on the
-// returned object. Calling the Start() method will result in one
+// The Scavenger can be started by calling the Run() method on the
+// returned object. Calling the Run() method will result in one
 // complete iteration over all of the history branches in the system. For
 // each branch, the scavenger will attempt
 //  - describe the corresponding workflow execution

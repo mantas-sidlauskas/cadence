@@ -175,7 +175,7 @@ func (s *Scavenger) run() {
 	s.awaitExecutor()
 }
 
-// process is a callback function that gets invoked from within the executor.Start() method
+// process is a callback function that gets invoked from within the executor.Run() method
 func (s *Scavenger) process(key *taskListKey, state *taskListState) executor.TaskStatus {
 	return s.deleteHandler(key, state)
 }
