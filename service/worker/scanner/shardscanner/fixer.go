@@ -27,10 +27,10 @@ import (
 	"fmt"
 
 	"github.com/pborman/uuid"
-
 	"github.com/uber/cadence/common/blobstore"
 	"github.com/uber/cadence/common/cache"
 	"github.com/uber/cadence/common/dynamicconfig"
+	"github.com/uber/cadence/common/metrics"
 	"github.com/uber/cadence/common/reconciliation/entity"
 	"github.com/uber/cadence/common/reconciliation/invariant"
 	"github.com/uber/cadence/common/reconciliation/store"
@@ -59,6 +59,7 @@ type (
 		progressReportFn func()
 		domainCache      cache.DomainCache
 		allowDomain      dynamicconfig.BoolPropertyFnWithDomainFilter
+		scope            metrics.Scope
 	}
 )
 
@@ -73,6 +74,7 @@ func NewFixer(
 	progressReportFn func(),
 	domainCache cache.DomainCache,
 	allowDomain dynamicconfig.BoolPropertyFnWithDomainFilter,
+	scope metrics.Scope,
 ) *ShardFixer {
 	id := uuid.New()
 
@@ -87,6 +89,7 @@ func NewFixer(
 		progressReportFn: progressReportFn,
 		domainCache:      domainCache,
 		allowDomain:      allowDomain,
+		scope:            scope,
 	}
 }
 
@@ -94,8 +97,7 @@ func NewFixer(
 func (f *ShardFixer) Fix() FixReport {
 
 	result := FixReport{
-		ShardID:     f.shardID,
-		DomainStats: map[string]*FixStats{},
+		ShardID: f.shardID,
 	}
 
 	for f.itr.HasNext() {
@@ -118,9 +120,6 @@ func (f *ShardFixer) Fix() FixReport {
 			}
 			return result
 		}
-		if _, ok := result.DomainStats[domainID]; !ok {
-			result.DomainStats[domainID] = &FixStats{}
-		}
 
 		var fixResult invariant.ManagerFixResult
 
@@ -131,13 +130,19 @@ func (f *ShardFixer) Fix() FixReport {
 				FixResultType: invariant.FixResultTypeSkipped,
 			}
 		}
-		result.Stats.EntitiesCount++
-		result.DomainStats[domainID].EntitiesCount++
+
 		foe := store.FixOutputEntity{
 			Execution: soe.Execution,
 			Input:     *soe,
 			Result:    fixResult,
 		}
+
+		f.scope.Tagged(
+			metrics.DomainTag(domainName),
+			metrics.InvariantTypeTag(fmt.Sprintf("%v", fixResult.DeterminingInvariantName)),
+			metrics.ShardscannerFixResult(string(fixResult.FixResultType)),
+		).IncCounter(1)
+
 		switch fixResult.FixResultType {
 		case invariant.FixResultTypeFixed:
 			if err := f.fixedWriter.Add(foe); err != nil {
@@ -147,8 +152,6 @@ func (f *ShardFixer) Fix() FixReport {
 				}
 				return result
 			}
-			result.Stats.FixedCount++
-			result.DomainStats[domainID].FixedCount++
 		case invariant.FixResultTypeSkipped:
 			if err := f.skippedWriter.Add(foe); err != nil {
 				result.Result.ControlFlowFailure = &ControlFlowFailure{
@@ -157,8 +160,7 @@ func (f *ShardFixer) Fix() FixReport {
 				}
 				return result
 			}
-			result.Stats.SkippedCount++
-			result.DomainStats[domainID].SkippedCount++
+
 		case invariant.FixResultTypeFailed:
 			if err := f.failedWriter.Add(foe); err != nil {
 				result.Result.ControlFlowFailure = &ControlFlowFailure{
@@ -167,8 +169,6 @@ func (f *ShardFixer) Fix() FixReport {
 				}
 				return result
 			}
-			result.Stats.FailedCount++
-			result.DomainStats[domainID].FailedCount++
 		default:
 			panic(fmt.Sprintf("unknown FixResultType: %v", fixResult.FixResultType))
 		}

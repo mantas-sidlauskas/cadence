@@ -31,19 +31,21 @@ const (
 	buildVersionTag = "build_version"
 	goVersionTag    = "go_version"
 
-	instance       = "instance"
-	domain         = "domain"
-	targetCluster  = "target_cluster"
-	activeCluster  = "active_cluster"
-	taskList       = "tasklist"
-	taskListType   = "tasklistType"
-	workflowType   = "workflowType"
-	activityType   = "activityType"
-	decisionType   = "decisionType"
-	invariantType  = "invariantType"
-	kafkaPartition = "kafkaPartition"
-	transport      = "transport"
-	signalName     = "signalName"
+	instance               = "instance"
+	domain                 = "domain"
+	targetCluster          = "target_cluster"
+	activeCluster          = "active_cluster"
+	taskList               = "tasklist"
+	taskListType           = "tasklistType"
+	workflowType           = "workflowType"
+	activityType           = "activityType"
+	decisionType           = "decisionType"
+	invariantType          = "invariantType"
+	shardscannerScanResult = "shardscanner_scan_result"
+	shardscannerFixResult  = "shardscanner_fix_result"
+	kafkaPartition         = "kafkaPartition"
+	transport              = "transport"
+	signalName             = "signalName"
 
 	allValue     = "all"
 	unknownValue = "_unknown_"
@@ -138,6 +140,16 @@ func DecisionTypeTag(value string) Tag {
 // InvariantTypeTag returns a new invariant type tag.
 func InvariantTypeTag(value string) Tag {
 	return metricWithUnknown(invariantType, value)
+}
+
+// ShardscannerScanResult returns a new shardscanner scan result type tag.
+func ShardscannerScanResult(value string) Tag {
+	return metricWithUnknown(shardscannerScanResult, value)
+}
+
+// ShardscannerFixResult returns a new shardscanner fix result type tag.
+func ShardscannerFixResult(value string) Tag {
+	return metricWithUnknown(shardscannerFixResult, value)
 }
 
 // KafkaPartitionTag returns a new KafkaPartition type tag.

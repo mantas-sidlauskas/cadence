@@ -179,6 +179,8 @@ func scanShard(
 		params.BlobstoreFlushThreshold,
 		ctx.Hooks.Manager(activityCtx, pr, params),
 		func() { activity.RecordHeartbeat(activityCtx, heartbeatDetails) },
+		scope,
+		resources.GetDomainCache(),
 	)
 	report := scanner.Scan(activityCtx)
 	if report.Result.ControlFlowFailure != nil {
@@ -373,6 +375,7 @@ func fixShard(
 		func() { activity.RecordHeartbeat(activityCtx, heartbeatDetails) },
 		resource.GetDomainCache(),
 		ctx.Config.DynamicParams.AllowDomain,
+		scope,
 	)
 	report := fixer.Fix()
 	if report.Result.ControlFlowFailure != nil {
@@ -399,20 +402,5 @@ func ScannerEmitMetricsActivity(
 	scope.UpdateGauge(metrics.CadenceShardSuccessGauge, float64(params.ShardSuccessCount))
 	scope.UpdateGauge(metrics.CadenceShardFailureGauge, float64(params.ShardControlFlowFailureCount))
 
-	agg := params.AggregateReportResult
-	scope.UpdateGauge(metrics.ScannerExecutionsGauge, float64(agg.EntitiesCount))
-	scope.UpdateGauge(metrics.ScannerCorruptedGauge, float64(agg.CorruptedCount))
-	scope.UpdateGauge(metrics.ScannerCheckFailedGauge, float64(agg.CheckFailedCount))
-	for k, v := range agg.CorruptionByType {
-		scope.Tagged(metrics.InvariantTypeTag(string(k))).UpdateGauge(metrics.ScannerCorruptionByTypeGauge, float64(v))
-	}
-	shardStats := params.ShardDistributionStats
-	scope.UpdateGauge(metrics.ScannerShardSizeMaxGauge, float64(shardStats.Max))
-	scope.UpdateGauge(metrics.ScannerShardSizeMedianGauge, float64(shardStats.Median))
-	scope.UpdateGauge(metrics.ScannerShardSizeMinGauge, float64(shardStats.Min))
-	scope.UpdateGauge(metrics.ScannerShardSizeNinetyGauge, float64(shardStats.P90))
-	scope.UpdateGauge(metrics.ScannerShardSizeSeventyFiveGauge, float64(shardStats.P75))
-	scope.UpdateGauge(metrics.ScannerShardSizeTwentyFiveGauge, float64(shardStats.P25))
-	scope.UpdateGauge(metrics.ScannerShardSizeTenGauge, float64(shardStats.P10))
 	return nil
 }
