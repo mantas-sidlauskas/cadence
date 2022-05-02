@@ -58,14 +58,18 @@ type (
 	HistoryResender interface {
 		// SendSingleWorkflowHistory sends multiple run IDs's history events to remote
 		SendSingleWorkflowHistory(
-			domainID string,
-			workflowID string,
-			runID string,
+			identifier WorkflowIdentifier,
 			startEventID *int64,
 			startEventVersion *int64,
 			endEventID *int64,
 			endEventVersion *int64,
 		) error
+	}
+
+	WorkflowIdentifier interface {
+		GetWorkflowID() string
+		GetDomainID() string
+		GetRunID() string
 	}
 
 	// HistoryResenderImpl is the implementation of NDCHistoryResender
@@ -109,9 +113,7 @@ func NewHistoryResender(
 
 // SendSingleWorkflowHistory sends one run IDs's history events to remote
 func (n *HistoryResenderImpl) SendSingleWorkflowHistory(
-	domainID string,
-	workflowID string,
-	runID string,
+	identifier WorkflowIdentifier,
 	startEventID *int64,
 	startEventVersion *int64,
 	endEventID *int64,
@@ -121,7 +123,7 @@ func (n *HistoryResenderImpl) SendSingleWorkflowHistory(
 	ctx := context.Background()
 	var cancel context.CancelFunc
 	if n.rereplicationTimeout != nil {
-		resendContextTimeout := n.rereplicationTimeout(domainID)
+		resendContextTimeout := n.rereplicationTimeout(identifier.GetDomainID())
 		if resendContextTimeout > 0 {
 			ctx, cancel = context.WithTimeout(ctx, resendContextTimeout)
 			defer cancel()
@@ -130,9 +132,7 @@ func (n *HistoryResenderImpl) SendSingleWorkflowHistory(
 
 	historyIterator := collection.NewPagingIterator(n.getPaginationFn(
 		ctx,
-		domainID,
-		workflowID,
-		runID,
+		identifier,
 		startEventID,
 		startEventVersion,
 		endEventID,
@@ -142,17 +142,15 @@ func (n *HistoryResenderImpl) SendSingleWorkflowHistory(
 		result, err := historyIterator.Next()
 		if err != nil {
 			n.logger.Error("failed to get history events",
-				tag.WorkflowDomainID(domainID),
-				tag.WorkflowID(workflowID),
-				tag.WorkflowRunID(runID),
+				tag.WorkflowDomainID(identifier.GetDomainID()),
+				tag.WorkflowID(identifier.GetWorkflowID()),
+				tag.WorkflowRunID(identifier.GetRunID()),
 				tag.Error(err))
 			return err
 		}
 		historyBatch := result.(*historyBatch)
 		replicationRequest := n.createReplicationRawRequest(
-			domainID,
-			workflowID,
-			runID,
+			identifier,
 			historyBatch.rawEventBatch,
 			historyBatch.versionHistory.GetItems())
 
@@ -166,18 +164,16 @@ func (n *HistoryResenderImpl) SendSingleWorkflowHistory(
 			// Case 2: the workflow is corrupted
 			if skipTask := n.fixCurrentExecution(
 				ctx,
-				domainID,
-				workflowID,
-				runID,
+				identifier,
 			); skipTask {
 				return ErrSkipTask
 			}
 			return err
 		default:
 			n.logger.Error("failed to replicate events",
-				tag.WorkflowDomainID(domainID),
-				tag.WorkflowID(workflowID),
-				tag.WorkflowRunID(runID),
+				tag.WorkflowDomainID(identifier.GetDomainID()),
+				tag.WorkflowID(identifier.GetWorkflowID()),
+				tag.WorkflowRunID(identifier.GetRunID()),
 				tag.Error(err))
 			return err
 		}
@@ -187,9 +183,7 @@ func (n *HistoryResenderImpl) SendSingleWorkflowHistory(
 
 func (n *HistoryResenderImpl) getPaginationFn(
 	ctx context.Context,
-	domainID string,
-	workflowID string,
-	runID string,
+	identifier WorkflowIdentifier,
 	startEventID *int64,
 	startEventVersion *int64,
 	endEventID *int64,
@@ -200,9 +194,7 @@ func (n *HistoryResenderImpl) getPaginationFn(
 
 		response, err := n.getHistory(
 			ctx,
-			domainID,
-			workflowID,
-			runID,
+			identifier,
 			startEventID,
 			startEventVersion,
 			endEventID,
@@ -228,18 +220,16 @@ func (n *HistoryResenderImpl) getPaginationFn(
 }
 
 func (n *HistoryResenderImpl) createReplicationRawRequest(
-	domainID string,
-	workflowID string,
-	runID string,
+	identifier WorkflowIdentifier,
 	historyBlob *types.DataBlob,
 	versionHistoryItems []*types.VersionHistoryItem,
 ) *types.ReplicateEventsV2Request {
 
 	request := &types.ReplicateEventsV2Request{
-		DomainUUID: domainID,
+		DomainUUID: identifier.GetDomainID(),
 		WorkflowExecution: &types.WorkflowExecution{
-			WorkflowID: workflowID,
-			RunID:      runID,
+			WorkflowID: identifier.GetWorkflowID(),
+			RunID:      identifier.GetRunID(),
 		},
 		Events:              historyBlob,
 		VersionHistoryItems: versionHistoryItems,
@@ -259,9 +249,7 @@ func (n *HistoryResenderImpl) sendReplicationRawRequest(
 
 func (n *HistoryResenderImpl) getHistory(
 	ctx context.Context,
-	domainID string,
-	workflowID string,
-	runID string,
+	identifier WorkflowIdentifier,
 	startEventID *int64,
 	startEventVersion *int64,
 	endEventID *int64,
@@ -270,9 +258,9 @@ func (n *HistoryResenderImpl) getHistory(
 	pageSize int32,
 ) (*types.GetWorkflowExecutionRawHistoryV2Response, error) {
 
-	logger := n.logger.WithTags(tag.WorkflowRunID(runID))
+	logger := n.logger.WithTags(tag.WorkflowRunID(identifier.GetRunID()))
 
-	domainName, err := n.domainCache.GetDomainName(domainID)
+	domainName, err := n.domainCache.GetDomainName(identifier.GetDomainID())
 	if err != nil {
 		logger.Error("error getting domain", tag.Error(err))
 		return nil, err
@@ -283,8 +271,8 @@ func (n *HistoryResenderImpl) getHistory(
 	response, err := n.adminClient.GetWorkflowExecutionRawHistoryV2(ctx, &types.GetWorkflowExecutionRawHistoryV2Request{
 		Domain: domainName,
 		Execution: &types.WorkflowExecution{
-			WorkflowID: workflowID,
-			RunID:      runID,
+			WorkflowID: identifier.GetWorkflowID(),
+			RunID:      identifier.GetRunID(),
 		},
 		StartEventID:      startEventID,
 		StartEventVersion: startEventVersion,
@@ -303,9 +291,7 @@ func (n *HistoryResenderImpl) getHistory(
 
 func (n *HistoryResenderImpl) fixCurrentExecution(
 	ctx context.Context,
-	domainID string,
-	workflowID string,
-	runID string,
+	identifier WorkflowIdentifier,
 ) bool {
 
 	if n.currentExecutionCheck == nil {
@@ -313,8 +299,8 @@ func (n *HistoryResenderImpl) fixCurrentExecution(
 	}
 	execution := &entity.CurrentExecution{
 		Execution: entity.Execution{
-			DomainID:   domainID,
-			WorkflowID: workflowID,
+			DomainID:   identifier.GetDomainID(),
+			WorkflowID: identifier.GetRunID(),
 			State:      persistence.WorkflowStateRunning,
 		},
 	}

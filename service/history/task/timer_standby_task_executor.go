@@ -457,10 +457,7 @@ func (t *timerStandbyTaskExecutor) fetchHistoryFromRemote(
 	if postActionInfo == nil {
 		return nil
 	}
-
-	task := taskInfo.(*persistence.TimerTaskInfo)
 	resendInfo := postActionInfo.(*historyResendInfo)
-
 	t.metricsClient.IncCounter(metrics.HistoryRereplicationByTimerTaskScope, metrics.CadenceClientRequests)
 	stopwatch := t.metricsClient.StartTimer(metrics.HistoryRereplicationByTimerTaskScope, metrics.CadenceClientLatency)
 	defer stopwatch.Stop()
@@ -470,9 +467,7 @@ func (t *timerStandbyTaskExecutor) fetchHistoryFromRemote(
 		// note history resender doesn't take in a context parameter, there's a separate dynamicconfig for
 		// controlling the timeout for resending history.
 		err = t.historyResender.SendSingleWorkflowHistory(
-			task.DomainID,
-			task.WorkflowID,
-			task.RunID,
+			taskInfo,
 			resendInfo.lastEventID,
 			resendInfo.lastEventVersion,
 			nil,

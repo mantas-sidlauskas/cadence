@@ -156,9 +156,7 @@ func (e *taskExecutorImpl) handleActivityTask(
 		defer stopwatch.Stop()
 
 		resendErr := e.historyResender.SendSingleWorkflowHistory(
-			retryErr.GetDomainID(),
-			retryErr.GetWorkflowID(),
-			retryErr.GetRunID(),
+			retryErr,
 			retryErr.StartEventID,
 			retryErr.StartEventVersion,
 			retryErr.EndEventID,
@@ -240,9 +238,7 @@ func (e *taskExecutorImpl) handleHistoryReplicationTaskV2(
 	defer resendStopWatch.Stop()
 
 	resendErr := e.historyResender.SendSingleWorkflowHistory(
-		retryErr.GetDomainID(),
-		retryErr.GetWorkflowID(),
-		retryErr.GetRunID(),
+		retryErr,
 		retryErr.StartEventID,
 		retryErr.StartEventVersion,
 		retryErr.EndEventID,
