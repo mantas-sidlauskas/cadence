@@ -40,8 +40,6 @@ const (
 	NumClusters         = "NumClusters"
 	VisibilityOperation = "VisibilityOperation"
 	UpdateTime          = "UpdateTime"
-
-	KafkaKey = "KafkaKey"
 )
 
 // Supported field types
